@@ -89,6 +89,19 @@ function App() {
     // تعذر قراءة تفاصيل الخطأ
   }
 
+ جههif (loginError) {
+  let detail = "";
+
+  try {
+    const response = loginError.context;
+    if (response && typeof response.json === "function") {
+      const body = await response.json();
+      detail = body?.error || "";
+    }
+  } catch {
+    // تعذر قراءة تفاصيل الخطأ
+  }
+
   throw new Error(
     detail || "تعذر الاتصال بخدمة تسجيل الدخول. تحقق من إعدادات الخدمة."
   );
