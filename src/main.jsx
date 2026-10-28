@@ -76,9 +76,23 @@ function App() {
           body: { username: cleanUsername, password },
         });
 
-      if (loginError) {
-        throw new Error("تعذر الاتصال بخدمة تسجيل الدخول. تحقق من إعدادات الخدمة.");
-      }
+    جههif (loginError) {
+  let detail = "";
+
+  try {
+    const response = loginError.context;
+    if (response && typeof response.json === "function") {
+      const body = await response.json();
+      detail = body?.error || "";
+    }
+  } catch {
+    // تعذر قراءة تفاصيل الخطأ
+  }
+
+  throw new Error(
+    detail || "تعذر الاتصال بخدمة تسجيل الدخول. تحقق من إعدادات الخدمة."
+  );
+}
 
       if (!data || data.error || !data.access_token || !data.refresh_token) {
         throw new Error(data?.error || "اسم المستخدم أو كلمة المرور غير صحيحة، أو أن الحساب غير مفعّل.");
