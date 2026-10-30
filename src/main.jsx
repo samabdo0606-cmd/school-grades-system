@@ -608,18 +608,82 @@ async function handleCreateSchool(e) {
             </>
           )}
 
-          {activeSection === "schools" && (
-            <div className="page-heading">
-              <h2>إدارة المدارس</h2>
-              <p>
-                سنضيف هنا إمكانية إنشاء حسابات المدارس وتعديلها
-                وتعطيلها وعرض بياناتها.
-              </p>
-              <p className="notice">
-                هذا القسم قيد التجهيز.
-              </p>
-            </div>
-          )}
+         {activeSection === "schools" && (
+  <div className="page-heading">
+    <h2>إدارة المدارس</h2>
+    <p>إنشاء حساب جديد لمدرسة.</p>
+
+    <form onSubmit={handleCreateSchool} className="school-form">
+
+      <div className="form-group">
+        <label>اسم المستخدم</label>
+        <input
+          type="text"
+          value={schoolUsername}
+          onChange={(e) => setSchoolUsername(e.target.value)}
+          placeholder="مثال: school001"
+          required
+        />
+      </div>
+
+      <div className="form-group">
+        <label>كلمة المرور</label>
+        <input
+          type="password"
+          value={schoolPassword}
+          onChange={(e) => setSchoolPassword(e.target.value)}
+          placeholder="12 حرفًا على الأقل"
+          required
+        />
+      </div>
+
+      <div className="form-group">
+        <label>اسم المسؤول</label>
+        <input
+          type="text"
+          value={schoolDisplayName}
+          onChange={(e) => setSchoolDisplayName(e.target.value)}
+          required
+        />
+      </div>
+
+      <div className="form-group">
+        <label>اسم المدرسة</label>
+        <input
+          type="text"
+          value={schoolName}
+          onChange={(e) => setSchoolName(e.target.value)}
+          required
+        />
+      </div>
+
+      <div className="form-group">
+        <label>رقم المدرسة (ثلاث خانات)</label>
+        <input
+          type="text"
+          maxLength="3"
+          value={schoolUserNo}
+          onChange={(e) => setSchoolUserNo(e.target.value.replace(/\D/g, ""))}
+          placeholder="مثال: 001"
+          required
+        />
+      </div>
+
+      {schoolError && (
+        <p className="error-message">{schoolError}</p>
+      )}
+
+      {schoolMessage && (
+        <p className="success-message">{schoolMessage}</p>
+      )}
+
+      <button type="submit" disabled={schoolLoading}>
+        {schoolLoading ? "جارٍ إنشاء الحساب..." : "إنشاء حساب المدرسة"}
+      </button>
+
+    </form>
+  </div>
+)}
 
           {activeSection === "students" && (
             <div className="page-heading">
