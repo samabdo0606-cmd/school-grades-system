@@ -74,18 +74,32 @@ const [studentMessage, setStudentMessage] = useState("");
         setError("تعذر التحقق من جلسة الدخول.");
         return;
       }
+const { data: profile, error: profileError } =
+          await supabase
+            .from("profiles")
+            .select("user_no, school_name, role, username")
+            .eq("id", currentUser.id)
+            .single();
 
-      if (data.session) {
-        const currentUser = data.session.user;
+        if (profileError || !profile) {
+          setError("تعذر تحميل بيانات الحساب.");
+          return;
+        }
 
         setUser({
+          id: currentUser.id,
           username:
+            profile.username ||
             currentUser.user_metadata?.username ||
             currentUser.email || "",
-          role: currentUser.user_metadata?.role || "school",
+          role:
+            profile.role ||
+            currentUser.user_metadata?.role ||
+            "school",
+          user_no: profile.user_no,
+          school_name: profile.school_name,
         });
-      }
-    }
+    
 
     initialize();
 
