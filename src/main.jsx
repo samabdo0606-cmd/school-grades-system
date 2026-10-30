@@ -117,7 +117,73 @@ function App() {
       mounted = false;
     };
   }, [user]);
+async function handleCreateSchool(e) {
+  e.preventDefault();
 
+  setSchoolError("");
+  setSchoolMessage("");
+
+  if (
+    !schoolUsername.trim() ||
+    !schoolPassword ||
+    !schoolDisplayName.trim() ||
+    !schoolName.trim() ||
+    !schoolUserNo.trim()
+  ) {
+    setSchoolError("يرجى填写 جميع البيانات.");
+    return;
+  }
+
+  if (!/^[a-zA-Z0-9_]{3,30}$/.test(schoolUsername.trim())) {
+    setSchoolError("اسم المستخدم يجب أن يكون من 3 إلى 30 حرفًا إنجليزيًا أو رقمًا أو _.");
+    return;
+  }
+
+  if (schoolPassword.length < 12) {
+    setSchoolError("كلمة المرور يجب ألا تقل عن 12 حرفًا.");
+    return;
+  }
+
+  if (!/^\d{3}$/.test(schoolUserNo.trim()) || schoolUserNo.trim() === "000") {
+    setSchoolError("رقم المدرسة يجب أن يكون ثلاث خانات، ولا يكون 000.");
+    return;
+  }
+
+  setSchoolLoading(true);
+
+  try {
+    const { data, error } = await supabase.functions.invoke(
+      "manage-schools",
+      {
+        body: {
+          username: schoolUsername.trim(),
+          password: schoolPassword,
+          display_name: schoolDisplayName.trim(),
+          school_name: schoolName.trim(),
+          user_no: schoolUserNo.trim(),
+        },
+      }
+    );
+
+    if (error) {
+      throw error;
+    }
+
+    setSchoolMessage(data?.message || "تم إنشاء حساب المدرسة بنجاح.");
+    setSchoolUsername("");
+    setSchoolPassword("");
+    setSchoolDisplayName("");
+    setSchoolName("");
+    setSchoolUserNo("");
+  } catch (error) {
+    console.error("Create school error:", error);
+    setSchoolError(
+      error.message || "تعذر إنشاء الحساب. تحقق من البيانات وحاول مرة أخرى."
+    );
+  } finally {
+    setSchoolLoading(false);
+  }
+}
   async function handleLogin(e) {
     e.preventDefault();
     setError("");
