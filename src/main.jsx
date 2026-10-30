@@ -18,6 +18,7 @@ function App() {
   const [forms, setForms] = useState([]);
   const [formsLoading, setFormsLoading] = useState(false);
   const [formsError, setFormsError] = useState("");
+  const [selectedForm, setSelectedForm] = useState(null);
 // بيانات إنشاء حساب مدرسة
   const [schoolUsername, setSchoolUsername] = useState("");
   const [schoolPassword, setSchoolPassword] = useState("");
