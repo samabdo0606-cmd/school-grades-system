@@ -65,7 +65,7 @@ const [studentMessage, setStudentMessage] = useState("");
         return;
       }
 
-      const { data, error: sessionError } =
+     const { data, error: sessionError } =
         await supabase.auth.getSession();
 
       if (!mounted) return;
@@ -85,20 +85,6 @@ const { data: profile, error: profileError } =
           setError("تعذر تحميل بيانات الحساب.");
           return;
         }
-
-        setUser({
-          id: currentUser.id,
-          username:
-            profile.username ||
-            currentUser.user_metadata?.username ||
-            currentUser.email || "",
-          role:
-            profile.role ||
-            currentUser.user_metadata?.role ||
-            "school",
-          user_no: profile.user_no,
-          school_name: profile.school_name,
-        });
     
 
     initialize();
