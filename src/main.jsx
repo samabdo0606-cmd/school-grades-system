@@ -86,7 +86,7 @@ function App() {
 
   // تحميل نماذج الدرجات من قاعدة البيانات
   useEffect(() => {
-    if (!user || user.role !== "admin") return;
+ if (!user) return;
 
     let mounted = true;
 
