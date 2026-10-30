@@ -18,7 +18,17 @@ function App() {
   const [forms, setForms] = useState([]);
   const [formsLoading, setFormsLoading] = useState(false);
   const [formsError, setFormsError] = useState("");
+// بيانات إنشاء حساب مدرسة
+  const [schoolUsername, setSchoolUsername] = useState("");
+  const [schoolPassword, setSchoolPassword] = useState("");
+  const [schoolDisplayName, setSchoolDisplayName] = useState("");
+  const [schoolName, setSchoolName] = useState("");
+  const [schoolUserNo, setSchoolUserNo] = useState("");
 
+  const [schoolLoading, setSchoolLoading] = useState(false);
+  const [schoolError, setSchoolError] = useState("");
+  const [schoolMessage, setSchoolMessage] = useState("");
+  const [schools, setSchools] = useState([]);
   useEffect(() => {
     let mounted = true;
 
