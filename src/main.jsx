@@ -494,7 +494,7 @@ async function handleCreateSchool(e) {
               >
                 <span>📄</span> {form.name}
               </button>
-            )}
+          ))}
 
             <button
               onClick={handleLogout}
