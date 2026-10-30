@@ -14,18 +14,22 @@ function App() {
   const [user, setUser] = useState(null);
   const [recoveryMode, setRecoveryMode] = useState(false);
 
+  const [activeSection, setActiveSection] = useState("home");
+  const [forms, setForms] = useState([]);
+  const [formsLoading, setFormsLoading] = useState(false);
+  const [formsError, setFormsError] = useState("");
+
   useEffect(() => {
     let mounted = true;
 
-    const { data: authListener } = supabase.auth.onAuthStateChange(
-      (event) => {
+    const { data: authListener } =
+      supabase.auth.onAuthStateChange((event) => {
         if (event === "PASSWORD_RECOVERY" && mounted) {
           setRecoveryMode(true);
           setError("");
           setMessage("");
         }
-      }
-    );
+      });
 
     async function initialize() {
       const hash = window.location.hash;
@@ -36,9 +40,7 @@ function App() {
         params.get("type") === "recovery";
 
       if (isRecovery) {
-        if (mounted) {
-          setRecoveryMode(true);
-        }
+        if (mounted) setRecoveryMode(true);
         return;
       }
 
@@ -58,8 +60,7 @@ function App() {
         setUser({
           username:
             currentUser.user_metadata?.username ||
-            currentUser.email ||
-            "",
+            currentUser.email || "",
           role: currentUser.user_metadata?.role || "school",
         });
       }
@@ -72,6 +73,40 @@ function App() {
       authListener.subscription.unsubscribe();
     };
   }, []);
+
+  // تحميل نماذج الدرجات من قاعدة البيانات
+  useEffect(() => {
+    if (!user || user.role !== "admin") return;
+
+    let mounted = true;
+
+    async function loadForms() {
+      setFormsLoading(true);
+      setFormsError("");
+
+      const { data, error } = await supabase
+        .from("forms")
+        .select("*")
+        .eq("is_active", true)
+        .order("display_order", { ascending: true });
+
+      if (!mounted) return;
+
+      if (error) {
+        setFormsError("تعذر تحميل نماذج الدرجات: " + error.message);
+      } else {
+        setForms(data || []);
+      }
+
+      setFormsLoading(false);
+    }
+
+    loadForms();
+
+    return () => {
+      mounted = false;
+    };
+  }, [user]);
 
   async function handleLogin(e) {
     e.preventDefault();
@@ -106,13 +141,9 @@ function App() {
             const body = await response.clone().json();
             detail = body?.error || "";
           }
-        } catch {
-          // قد لا يحتوي خطأ الاتصال على استجابة JSON.
-        }
+        } catch {}
 
-        if (detail) {
-          throw new Error(detail);
-        }
+        if (detail) throw new Error(detail);
 
         if (loginError.name === "FunctionsFetchError") {
           throw new Error(
@@ -133,7 +164,7 @@ function App() {
 
       if (!data.access_token || !data.refresh_token || !data.user) {
         throw new Error(
-          "استجابة تسجيل الدخول غير مكتملة. تحقق من كود الدالة username-login."
+          "استجابة تسجيل الدخول غير مكتملة."
         );
       }
 
@@ -154,6 +185,7 @@ function App() {
         role: data.user.role || "school",
       });
 
+      setActiveSection("home");
       setPassword("");
     } catch (err) {
       setError(
@@ -187,7 +219,7 @@ function App() {
 
       if (sessionError || !sessionData.session) {
         throw new Error(
-          "رابط الاستعادة غير صالح أو انتهت صلاحيته. ستحتاج إلى طلب رابط جديد."
+          "رابط الاستعادة غير صالح أو انتهت صلاحيته."
         );
       }
 
@@ -196,9 +228,7 @@ function App() {
           password: newPassword,
         });
 
-      if (updateError) {
-        throw updateError;
-      }
+      if (updateError) throw updateError;
 
       await supabase.auth.signOut();
 
@@ -207,8 +237,9 @@ function App() {
       setConfirmPassword("");
       setUsername("");
       setPassword("");
+
       setMessage(
-        "تم تغيير كلمة المرور بنجاح. يمكنك الآن تسجيل الدخول بكلمة المرور الجديدة."
+        "تم تغيير كلمة المرور بنجاح. يمكنك الآن تسجيل الدخول."
       );
 
       window.history.replaceState(
@@ -218,8 +249,7 @@ function App() {
       );
     } catch (err) {
       setError(
-        err.message ||
-          "تعذر تغيير كلمة المرور. تحقق من رابط الاستعادة."
+        err.message || "تعذر تغيير كلمة المرور."
       );
     } finally {
       setLoading(false);
@@ -232,8 +262,11 @@ function App() {
     setPassword("");
     setError("");
     setMessage("");
+    setForms([]);
+    setActiveSection("home");
   }
 
+  // صفحة استعادة كلمة المرور
   if (recoveryMode) {
     return (
       <main className="login-page" dir="rtl">
@@ -271,16 +304,10 @@ function App() {
               required
             />
 
-            {error && (
-              <p className="error-message" role="alert">
-                {error}
-              </p>
-            )}
+            {error && <p className="error-message">{error}</p>}
 
             <button type="submit" disabled={loading}>
-              {loading
-                ? "جارٍ حفظ كلمة المرور..."
-                : "حفظ كلمة المرور الجديدة"}
+              {loading ? "جارٍ الحفظ..." : "حفظ كلمة المرور الجديدة"}
             </button>
           </form>
         </section>
@@ -288,100 +315,266 @@ function App() {
     );
   }
 
-  if (user) {
+  // صفحة تسجيل الدخول
+  if (!user) {
     return (
       <main className="login-page" dir="rtl">
         <section className="login-card">
           <h1>نظام درجات التلاميذ</h1>
-          <p className="subtitle">تم تسجيل الدخول بنجاح</p>
+          <p className="subtitle">
+            منصة إدارة درجات التلاميذ بالمدارس
+          </p>
 
-          <div className="welcome-box">
-            <p>اسم المستخدم: {user.username}</p>
-            <p>
-              نوع الحساب:{" "}
-              {user.role === "admin"
-                ? "مدير النظام"
-                : "حساب مدرسة"}
-            </p>
+          <div className="login-icon" aria-hidden="true">
+            📚
           </div>
 
-          <p>
-            {user.role === "admin"
-              ? "مرحبًا بك في حساب مدير النظام."
-              : "مرحبًا بك في حساب المدرسة."}
-          </p>
+          <h2>تسجيل الدخول</h2>
 
-          <p className="notice">
-            هذه مرحلة تسجيل الدخول. سنضيف واجهة الإدارة وإدخال الدرجات
-            في الخطوات التالية.
-          </p>
+          <form onSubmit={handleLogin}>
+            <label htmlFor="username">اسم المستخدم</label>
+            <input
+              id="username"
+              type="text"
+              autoComplete="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="أدخل اسم المستخدم"
+              required
+            />
 
-          <button type="button" onClick={handleLogout}>
-            تسجيل الخروج
-          </button>
+            <label htmlFor="password">كلمة المرور</label>
+            <input
+              id="password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="أدخل كلمة المرور"
+              required
+            />
+
+            {error && <p className="error-message">{error}</p>}
+            {message && <p role="status">{message}</p>}
+
+            <button type="submit" disabled={loading}>
+              {loading ? "جارٍ تسجيل الدخول..." : "تسجيل الدخول"}
+            </button>
+          </form>
+
+          <p className="footer-text">
+            نظام إلكتروني لإدارة درجات التلاميذ
+          </p>
         </section>
       </main>
     );
   }
 
-  return (
-    <main className="login-page" dir="rtl">
-      <section className="login-card">
-        <h1>نظام درجات التلاميذ</h1>
-        <p className="subtitle">
-          منصة إدارة درجات التلاميذ بالمدارس
-        </p>
+  // واجهة حساب المدرسة
+  if (user.role !== "admin") {
+    return (
+      <main className="dashboard" dir="rtl">
+        <header className="dashboard-header">
+          <h1>نظام درجات التلاميذ</h1>
+          <p>حساب المدرسة</p>
+        </header>
 
-        <div className="login-icon" aria-hidden="true">
-          📚
+        <section className="dashboard-content">
+          <div className="welcome-box">
+            <h2>مرحبًا بك في حساب المدرسة</h2>
+            <p>اسم المستخدم: {user.username}</p>
+            <p>ستظهر هنا نماذج إدخال الدرجات.</p>
+            <button onClick={handleLogout}>تسجيل الخروج</button>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  // لوحة تحكم مدير النظام
+  return (
+    <main className="dashboard" dir="rtl">
+      <header className="dashboard-header">
+        <div>
+          <h1>نظام درجات التلاميذ</h1>
+          <p>لوحة تحكم مدير النظام</p>
         </div>
 
-        <h2>تسجيل الدخول</h2>
-
-        <form onSubmit={handleLogin}>
-          <label htmlFor="username">اسم المستخدم</label>
-          <input
-            id="username"
-            type="text"
-            autoComplete="username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="أدخل اسم المستخدم"
-            required
-          />
-
-          <label htmlFor="password">كلمة المرور</label>
-          <input
-            id="password"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="أدخل كلمة المرور"
-            required
-          />
-
-          {error && (
-            <p className="error-message" role="alert">
-              {error}
-            </p>
-          )}
-
-          {message && (
-            <p role="status">{message}</p>
-          )}
-
-          <button type="submit" disabled={loading}>
-            {loading
-              ? "جارٍ تسجيل الدخول..."
-              : "تسجيل الدخول"}
+        <div className="admin-info">
+          <span>مدير النظام: {user.username}</span>
+          <button className="logout-button" onClick={handleLogout}>
+            تسجيل الخروج
           </button>
-        </form>
+        </div>
+      </header>
 
-        <p className="footer-text">
-          نظام إلكتروني لإدارة درجات التلاميذ
-        </p>
-      </section>
+      <div className="dashboard-layout">
+        <aside className="sidebar">
+          <h3>القائمة الرئيسية</h3>
+
+          <button
+            className={activeSection === "home" ? "active" : ""}
+            onClick={() => setActiveSection("home")}
+          >
+            <span>🏠</span> الرئيسية
+          </button>
+
+          <button
+            className={activeSection === "schools" ? "active" : ""}
+            onClick={() => setActiveSection("schools")}
+          >
+            <span>🏫</span> إدارة المدارس
+          </button>
+
+          <button
+            className={activeSection === "forms" ? "active" : ""}
+            onClick={() => setActiveSection("forms")}
+          >
+            <span>📋</span> نماذج الدرجات
+          </button>
+
+          <button
+            className={activeSection === "students" ? "active" : ""}
+            onClick={() => setActiveSection("students")}
+          >
+            <span>👨‍🎓</span> بيانات التلاميذ
+          </button>
+
+          <button
+            className={activeSection === "reports" ? "active" : ""}
+            onClick={() => setActiveSection("reports")}
+          >
+            <span>📊</span> التقارير
+          </button>
+        </aside>
+
+        <section className="main-content">
+
+          {activeSection === "home" && (
+            <>
+              <div className="page-heading">
+                <h2>مرحبًا بك، مدير النظام</h2>
+                <p>اختر القسم الذي تريد العمل عليه.</p>
+              </div>
+
+              <div className="dashboard-cards">
+                <button
+                  className="dashboard-card blue"
+                  onClick={() => setActiveSection("schools")}
+                >
+                  <span className="card-icon">🏫</span>
+                  <h3>إدارة المدارس</h3>
+                  <p>إضافة المدارس وإدارة حساباتها.</p>
+                </button>
+
+                <button
+                  className="dashboard-card green"
+                  onClick={() => setActiveSection("forms")}
+                >
+                  <span className="card-icon">📋</span>
+                  <h3>نماذج الدرجات</h3>
+                  <p>عرض وإدارة نماذج الصفوف.</p>
+                </button>
+
+                <button
+                  className="dashboard-card orange"
+                  onClick={() => setActiveSection("students")}
+                >
+                  <span className="card-icon">👨‍🎓</span>
+                  <h3>بيانات التلاميذ</h3>
+                  <p>مراجعة سجلات التلاميذ.</p>
+                </button>
+
+                <button
+                  className="dashboard-card purple"
+                  onClick={() => setActiveSection("reports")}
+                >
+                  <span className="card-icon">📊</span>
+                  <h3>التقارير</h3>
+                  <p>عرض ومراجعة تقارير الدرجات.</p>
+                </button>
+              </div>
+            </>
+          )}
+
+          {activeSection === "forms" && (
+            <>
+              <div className="page-heading">
+                <h2>نماذج الدرجات</h2>
+                <p>اختر الصف المطلوب.</p>
+              </div>
+
+              {formsLoading && (
+                <p className="notice">جارٍ تحميل نماذج الدرجات...</p>
+              )}
+
+              {formsError && (
+                <p className="error-message">{formsError}</p>
+              )}
+
+              {!formsLoading && !formsError && forms.length === 0 && (
+                <p className="notice">
+                  لا توجد نماذج درجات نشطة حاليًا.
+                </p>
+              )}
+
+              <div className="dashboard-cards">
+                {forms.map((form) => (
+                  <div className="dashboard-card green" key={form.id}>
+                    <span className="card-icon">📚</span>
+                    <h3>{form.name}</h3>
+                    <p>الصف الدراسي: {form.grade_level}</p>
+                    <p>رمز النموذج: {form.slug}</p>
+                    <span className="form-status">نشط</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {activeSection === "schools" && (
+            <div className="page-heading">
+              <h2>إدارة المدارس</h2>
+              <p>
+                سنضيف هنا إمكانية إنشاء حسابات المدارس وتعديلها
+                وتعطيلها وعرض بياناتها.
+              </p>
+              <p className="notice">
+                هذا القسم قيد التجهيز.
+              </p>
+            </div>
+          )}
+
+          {activeSection === "students" && (
+            <div className="page-heading">
+              <h2>بيانات التلاميذ</h2>
+              <p>
+                سيظهر هنا سجل التلاميذ وبياناتهم ودرجاتهم.
+              </p>
+              <p className="notice">
+                هذا القسم قيد التجهيز.
+              </p>
+            </div>
+          )}
+
+          {activeSection === "reports" && (
+            <div className="page-heading">
+              <h2>التقارير</h2>
+              <p>
+                سيظهر هنا عرض تقارير الدرجات ونتائج التلاميذ.
+              </p>
+              <p className="notice">
+                هذا القسم قيد التجهيز.
+              </p>
+            </div>
+          )}
+
+        </section>
+      </div>
+
+      <footer className="dashboard-footer">
+        نظام إلكتروني لإدارة درجات التلاميذ
+      </footer>
     </main>
   );
 }
