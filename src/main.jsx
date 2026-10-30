@@ -19,6 +19,16 @@ function App() {
   const [formsLoading, setFormsLoading] = useState(false);
   const [formsError, setFormsError] = useState("");
   const [selectedForm, setSelectedForm] = useState(null);
+  // بيانات نموذج التلميذ والدرجات
+const [studentNumber, setStudentNumber] = useState("");
+const [studentName, setStudentName] = useState("");
+const [answers, setAnswers] = useState({});
+const [currentPage, setCurrentPage] = useState(0);
+const [students, setStudents] = useState([]);
+const [currentStudentIndex, setCurrentStudentIndex] = useState(-1);
+const [studentLoading, setStudentLoading] = useState(false);
+const [studentError, setStudentError] = useState("");
+const [studentMessage, setStudentMessage] = useState("");
 // بيانات إنشاء حساب مدرسة
   const [schoolUsername, setSchoolUsername] = useState("");
   const [schoolPassword, setSchoolPassword] = useState("");
