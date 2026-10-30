@@ -448,22 +448,85 @@ async function handleCreateSchool(e) {
   }
 
   // واجهة حساب المدرسة
-  if (user.role !== "admin") {
+ if (user.role !== "admin") {
     return (
       <main className="dashboard" dir="rtl">
         <header className="dashboard-header">
-          <h1>نظام درجات التلاميذ</h1>
-          <p>حساب المدرسة</p>
+          <div>
+            <h1>نظام درجات التلاميذ</h1>
+            <p>حساب المدرسة: {user.username}</p>
+          </div>
+          <button className="logout-button" onClick={handleLogout}>
+            تسجيل الخروج
+          </button>
         </header>
 
-        <section className="dashboard-content">
-          <div className="welcome-box">
-            <h2>مرحبًا بك في حساب المدرسة</h2>
-            <p>اسم المستخدم: {user.username}</p>
-            <p>ستظهر هنا نماذج إدخال الدرجات.</p>
-            <button onClick={handleLogout}>تسجيل الخروج</button>
-          </div>
-        </section>
+        <div className="dashboard-layout">
+          <aside className="sidebar">
+            <h3>القائمة الرئيسية</h3>
+
+            <button
+              className={!selectedForm ? "active" : ""}
+              onClick={() => setSelectedForm(null)}
+            >
+              <span>🏠</span> الرئيسية
+            </button>
+
+            <div className="sidebar-section-title">
+              <span>📋</span> نماذج الدرجات
+            </div>
+
+            {formsLoading && <p>جارٍ تحميل النماذج...</p>}
+
+            {formsError && (
+              <p className="error-message">{formsError}</p>
+            )}
+
+            {!formsLoading && !formsError && forms.length === 0 && (
+              <p>لا توجد نماذج متاحة.</p>
+            )}
+
+            {forms.map((form) => (
+              <button
+                key={form.id}
+                className={selectedForm?.id === form.id ? "active" : ""}
+                onClick={() => setSelectedForm(form)}
+              >
+                <span>📄</span> {form.name}
+              </button>
+            )}
+
+            <button
+              onClick={handleLogout}
+              className="logout-button"
+            >
+              <span>🚪</span> تسجيل الخروج
+            </button>
+          </aside>
+
+          <section className="main-content">
+            {!selectedForm ? (
+              <div className="page-heading">
+                <h2>مرحبًا بك في حساب المدرسة</h2>
+                <p>اختر نموذج الدرجات من القائمة لبدء العمل.</p>
+              </div>
+            ) : (
+              <div className="page-heading">
+                <h2>{selectedForm.name}</h2>
+                <p>
+                  تم اختيار نموذج الصف بنجاح.
+                </p>
+                <p className="notice">
+                  سنضيف هنا نموذج إدخال بيانات التلاميذ والدرجات.
+                </p>
+              </div>
+            )}
+          </section>
+        </div>
+
+        <footer className="dashboard-footer">
+          نظام إلكتروني لإدارة درجات التلاميذ
+        </footer>
       </main>
     );
   }
