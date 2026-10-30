@@ -267,11 +267,31 @@ async function handleCreateSchool(e) {
         );
       }
 
+     const { data: authData, error: authError } =
+        await supabase.auth.getUser();
+
+      if (authError || !authData.user) {
+        throw new Error("تعذر التحقق من حساب المستخدم.");
+      }
+
+      const { data: profile, error: profileError } =
+        await supabase
+          .from("profiles")
+          .select("user_no, school_name")
+          .eq("id", authData.user.id)
+          .single();
+
+      if (profileError || !profile) {
+        throw new Error("تعذر تحميل بيانات المدرسة.");
+      }
+
       setUser({
+        id: authData.user.id,
         username: data.user.username || cleanUsername,
         role: data.user.role || "school",
+        user_no: profile.user_no,
+        school_name: profile.school_name,
       });
-
       setActiveSection("home");
       setPassword("");
     } catch (err) {
