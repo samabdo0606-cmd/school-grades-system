@@ -688,15 +688,7 @@ function App() {
         <h2>بيانات التلاميذ</h2>
       </div>
     )}
-
-    {activeSection === "reports" && (
-      <div className="page-heading">
-        <h2>التقارير</h2>
-      </div>
-    )}
-  </section>
-</div>
- </section>
+     </section>
 </div>
 </main>       
      
