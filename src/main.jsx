@@ -696,4 +696,7 @@ function App() {
     )}
   </section>
 </div>
+ </section>
+</div>
+</main>       
      
