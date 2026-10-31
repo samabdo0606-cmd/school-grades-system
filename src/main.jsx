@@ -8,6 +8,7 @@ function App() {
   const [password, setPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -19,17 +20,19 @@ function App() {
   const [formsLoading, setFormsLoading] = useState(false);
   const [formsError, setFormsError] = useState("");
   const [selectedForm, setSelectedForm] = useState(null);
+
   // بيانات نموذج التلميذ والدرجات
-const [studentNumber, setStudentNumber] = useState("");
-const [studentName, setStudentName] = useState("");
-const [answers, setAnswers] = useState({});
-const [currentPage, setCurrentPage] = useState(0);
-const [students, setStudents] = useState([]);
-const [currentStudentIndex, setCurrentStudentIndex] = useState(-1);
-const [studentLoading, setStudentLoading] = useState(false);
-const [studentError, setStudentError] = useState("");
-const [studentMessage, setStudentMessage] = useState("");
-// بيانات إنشاء حساب مدرسة
+  const [studentNumber, setStudentNumber] = useState("");
+  const [studentName, setStudentName] = useState("");
+  const [answers, setAnswers] = useState({});
+  const [currentPage, setCurrentPage] = useState(0);
+  const [students, setStudents] = useState([]);
+  const [currentStudentIndex, setCurrentStudentIndex] = useState(-1);
+  const [studentLoading, setStudentLoading] = useState(false);
+  const [studentError, setStudentError] = useState("");
+  const [studentMessage, setStudentMessage] = useState("");
+
+  // بيانات إنشاء حساب مدرسة
   const [schoolUsername, setSchoolUsername] = useState("");
   const [schoolPassword, setSchoolPassword] = useState("");
   const [schoolDisplayName, setSchoolDisplayName] = useState("");
@@ -40,6 +43,8 @@ const [studentMessage, setStudentMessage] = useState("");
   const [schoolError, setSchoolError] = useState("");
   const [schoolMessage, setSchoolMessage] = useState("");
   const [schools, setSchools] = useState([]);
+
+  // التحقق من جلسة الدخول عند فتح الموقع
   useEffect(() => {
     let mounted = true;
 
@@ -65,7 +70,7 @@ const [studentMessage, setStudentMessage] = useState("");
         return;
       }
 
-     const { data, error: sessionError } =
+      const { data, error: sessionError } =
         await supabase.auth.getSession();
 
       if (!mounted) return;
@@ -74,30 +79,66 @@ const [studentMessage, setStudentMessage] = useState("");
         setError("تعذر التحقق من جلسة الدخول.");
         return;
       }
-const { data: profile, error: profileError } =
-          await supabase
-            .from("profiles")
-            .select("user_no, school_name, role, username")
-            .eq("id", currentUser.id)
-            .single();
 
-        if (profileError || !profile) {
-          setError("تعذر تحميل بيانات الحساب.");
-          return;
-        }
-    
+      if (!data.session) {
+        setUser(null);
+        return;
+      }
 
-    initialize();
+      const { data: authData, error: authError } =
+        await supabase.auth.getUser();
+
+      if (!mounted) return;
+
+      if (authError || !authData.user) {
+        setError("تعذر التحقق من حساب المستخدم.");
+        return;
+      }
+
+      const { data: profile, error: profileError } =
+        await supabase
+          .from("profiles")
+          .select("user_no, school_name, role, username")
+          .eq("id", authData.user.id)
+          .single();
+
+      if (!mounted) return;
+
+      if (profileError || !profile) {
+        setError("تعذر تحميل بيانات الحساب.");
+        return;
+      }
+
+      if (!profile.role) {
+        setError("لم يتم تحديد صلاحيات هذا الحساب.");
+        return;
+      }
+
+      setUser({
+        id: authData.user.id,
+        username: profile.username || authData.user.email,
+        role: profile.role,
+        user_no: profile.user_no,
+        school_name: profile.school_name,
+      });
+    }
+
+    initialize().catch((err) => {
+      if (mounted) {
+        console.error("Initialization error:", err);
+        setError("حدث خطأ أثناء تحميل بيانات الحساب.");
+      }
+    });
 
     return () => {
       mounted = false;
       authListener.subscription.unsubscribe();
     };
-  }, []),
+  }, []);
 
   // تحميل نماذج الدرجات من قاعدة البيانات
   useEffect(() => {
- if (!user) return;
+    if (!user) return;
 
     let mounted = true;
 
@@ -114,7 +155,9 @@ const { data: profile, error: profileError } =
       if (!mounted) return;
 
       if (error) {
-        setFormsError("تعذر تحميل نماذج الدرجات: " + error.message);
+        setFormsError(
+          "تعذر تحميل نماذج الدرجات: " + error.message
+        );
       } else {
         setForms(data || []);
       }
@@ -128,75 +171,95 @@ const { data: profile, error: profileError } =
       mounted = false;
     };
   }, [user]);
-async function handleCreateSchool(e) {
-  e.preventDefault();
 
-  setSchoolError("");
-  setSchoolMessage("");
+  // إنشاء حساب مدرسة
+  async function handleCreateSchool(e) {
+    e.preventDefault();
 
-  if (
-    !schoolUsername.trim() ||
-    !schoolPassword ||
-    !schoolDisplayName.trim() ||
-    !schoolName.trim() ||
-    !schoolUserNo.trim()
-  ) {
-    setSchoolError("يرجى填写 جميع البيانات.");
-    return;
-  }
+    setSchoolError("");
+    setSchoolMessage("");
 
-  if (!/^[a-zA-Z0-9_]{3,30}$/.test(schoolUsername.trim())) {
-    setSchoolError("اسم المستخدم يجب أن يكون من 3 إلى 30 حرفًا إنجليزيًا أو رقمًا أو _.");
-    return;
-  }
-
-  if (schoolPassword.length < 12) {
-    setSchoolError("كلمة المرور يجب ألا تقل عن 12 حرفًا.");
-    return;
-  }
-
-  if (!/^\d{3}$/.test(schoolUserNo.trim()) || schoolUserNo.trim() === "000") {
-    setSchoolError("رقم المدرسة يجب أن يكون ثلاث خانات، ولا يكون 000.");
-    return;
-  }
-
-  setSchoolLoading(true);
-
-  try {
-    const { data, error } = await supabase.functions.invoke(
-      "manage-schools",
-      {
-        body: {
-          username: schoolUsername.trim(),
-          password: schoolPassword,
-          display_name: schoolDisplayName.trim(),
-          school_name: schoolName.trim(),
-          user_no: schoolUserNo.trim(),
-        },
-      }
-    );
-
-    if (error) {
-      throw error;
+    if (
+      !schoolUsername.trim() ||
+      !schoolPassword ||
+      !schoolDisplayName.trim() ||
+      !schoolName.trim() ||
+      !schoolUserNo.trim()
+    ) {
+      setSchoolError("يرجى إدخال جميع البيانات.");
+      return;
     }
 
-    setSchoolMessage(data?.message || "تم إنشاء حساب المدرسة بنجاح.");
-    setSchoolUsername("");
-    setSchoolPassword("");
-    setSchoolDisplayName("");
-    setSchoolName("");
-    setSchoolUserNo("");
-  } catch (error) {
-    console.error("Create school error:", error);
-    setSchoolError(
-      error.message || "تعذر إنشاء الحساب. تحقق من البيانات وحاول مرة أخرى."
-    );
-  } finally {
-    setSchoolLoading(false);
+    if (!/^[a-zA-Z0-9_]{3,30}$/.test(schoolUsername.trim())) {
+      setSchoolError(
+        "اسم المستخدم يجب أن يكون من 3 إلى 30 حرفًا إنجليزيًا أو رقمًا أو _."
+      );
+      return;
+    }
+
+    if (schoolPassword.length < 12) {
+      setSchoolError("كلمة المرور يجب ألا تقل عن 12 حرفًا.");
+      return;
+    }
+
+    if (
+      !/^\d{3}$/.test(schoolUserNo.trim()) ||
+      schoolUserNo.trim() === "000"
+    ) {
+      setSchoolError(
+        "رقم المدرسة يجب أن يكون ثلاث خانات، ولا يكون 000."
+      );
+      return;
+    }
+
+    setSchoolLoading(true);
+
+    try {
+      const { data, error } =
+        await supabase.functions.invoke("manage-schools", {
+          body: {
+            username: schoolUsername.trim(),
+            password: schoolPassword,
+            display_name: schoolDisplayName.trim(),
+            school_name: schoolName.trim(),
+            user_no: schoolUserNo.trim(),
+          },
+        });
+
+      if (error) {
+        throw error;
+      }
+
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+
+      setSchoolMessage(
+        data?.message || "تم إنشاء حساب المدرسة بنجاح."
+      );
+
+      setSchoolUsername("");
+      setSchoolPassword("");
+      setSchoolDisplayName("");
+      setSchoolName("");
+      setSchoolUserNo("");
+
+    } catch (err) {
+      console.error("Create school error:", err);
+
+      setSchoolError(
+        err.message ||
+        "تعذر إنشاء الحساب. تحقق من البيانات وحاول مرة أخرى."
+      );
+    } finally {
+      setSchoolLoading(false);
+    }
   }
-}
+
+  // تسجيل الدخول
   async function handleLogin(e) {
     e.preventDefault();
+
     setError("");
     setMessage("");
 
@@ -230,7 +293,9 @@ async function handleCreateSchool(e) {
           }
         } catch {}
 
-        if (detail) throw new Error(detail);
+        if (detail) {
+          throw new Error(detail);
+        }
 
         if (loginError.name === "FunctionsFetchError") {
           throw new Error(
@@ -249,10 +314,12 @@ async function handleCreateSchool(e) {
         );
       }
 
-      if (!data.access_token || !data.refresh_token || !data.user) {
-        throw new Error(
-          "استجابة تسجيل الدخول غير مكتملة."
-        );
+      if (
+        !data.access_token ||
+        !data.refresh_token ||
+        !data.user
+      ) {
+        throw new Error("استجابة تسجيل الدخول غير مكتملة.");
       }
 
       const { error: sessionError } =
@@ -267,7 +334,7 @@ async function handleCreateSchool(e) {
         );
       }
 
-     const { data: authData, error: authError } =
+      const { data: authData, error: authError } =
         await supabase.auth.getUser();
 
       if (authError || !authData.user) {
@@ -277,34 +344,46 @@ async function handleCreateSchool(e) {
       const { data: profile, error: profileError } =
         await supabase
           .from("profiles")
-          .select("user_no, school_name")
+          .select("user_no, school_name, role, username")
           .eq("id", authData.user.id)
           .single();
 
       if (profileError || !profile) {
-        throw new Error("تعذر تحميل بيانات المدرسة.");
+        throw new Error("تعذر تحميل بيانات الحساب.");
+      }
+
+      if (!profile.role) {
+        throw new Error("لم يتم تحديد صلاحيات هذا الحساب.");
       }
 
       setUser({
         id: authData.user.id,
-        username: data.user.username || cleanUsername,
-        role: data.user.role || "school",
+        username: profile.username || data.user.username || cleanUsername,
+        role: profile.role,
         user_no: profile.user_no,
         school_name: profile.school_name,
       });
+
       setActiveSection("home");
+      setSelectedForm(null);
       setPassword("");
+
     } catch (err) {
+      console.error("Login error:", err);
+
       setError(
-        err.message || "حدث خطأ غير متوقع أثناء تسجيل الدخول."
+        err.message ||
+        "حدث خطأ غير متوقع أثناء تسجيل الدخول."
       );
     } finally {
       setLoading(false);
     }
   }
 
+  // تغيير كلمة المرور
   async function handlePasswordUpdate(e) {
     e.preventDefault();
+
     setError("");
     setMessage("");
 
@@ -354,6 +433,7 @@ async function handleCreateSchool(e) {
         document.title,
         window.location.pathname
       );
+
     } catch (err) {
       setError(
         err.message || "تعذر تغيير كلمة المرور."
@@ -363,13 +443,21 @@ async function handleCreateSchool(e) {
     }
   }
 
+  // تسجيل الخروج
   async function handleLogout() {
-    await supabase.auth.signOut();
+    const { error: logoutError } = await supabase.auth.signOut();
+
+    if (logoutError) {
+      setError("تعذر تسجيل الخروج. حاول مرة أخرى.");
+      return;
+    }
+
     setUser(null);
     setPassword("");
     setError("");
     setMessage("");
     setForms([]);
+    setSelectedForm(null);
     setActiveSection("home");
   }
 
@@ -380,6 +468,7 @@ async function handleCreateSchool(e) {
         <section className="login-card">
           <h1>نظام درجات التلاميذ</h1>
           <h2>تعيين كلمة مرور جديدة</h2>
+
           <p className="subtitle">
             أدخل كلمة المرور الجديدة وأعد كتابتها للتأكيد.
           </p>
@@ -388,6 +477,7 @@ async function handleCreateSchool(e) {
             <label htmlFor="new-password">
               كلمة المرور الجديدة
             </label>
+
             <input
               id="new-password"
               type="password"
@@ -401,6 +491,7 @@ async function handleCreateSchool(e) {
             <label htmlFor="confirm-password">
               تأكيد كلمة المرور
             </label>
+
             <input
               id="confirm-password"
               type="password"
@@ -411,10 +502,14 @@ async function handleCreateSchool(e) {
               required
             />
 
-            {error && <p className="error-message">{error}</p>}
+            {error && (
+              <p className="error-message">{error}</p>
+            )}
 
             <button type="submit" disabled={loading}>
-              {loading ? "جارٍ الحفظ..." : "حفظ كلمة المرور الجديدة"}
+              {loading
+                ? "جارٍ الحفظ..."
+                : "حفظ كلمة المرور الجديدة"}
             </button>
           </form>
         </section>
@@ -428,6 +523,7 @@ async function handleCreateSchool(e) {
       <main className="login-page" dir="rtl">
         <section className="login-card">
           <h1>نظام درجات التلاميذ</h1>
+
           <p className="subtitle">
             منصة إدارة درجات التلاميذ بالمدارس
           </p>
@@ -440,6 +536,7 @@ async function handleCreateSchool(e) {
 
           <form onSubmit={handleLogin}>
             <label htmlFor="username">اسم المستخدم</label>
+
             <input
               id="username"
               type="text"
@@ -451,6 +548,7 @@ async function handleCreateSchool(e) {
             />
 
             <label htmlFor="password">كلمة المرور</label>
+
             <input
               id="password"
               type="password"
@@ -461,11 +559,18 @@ async function handleCreateSchool(e) {
               required
             />
 
-            {error && <p className="error-message">{error}</p>}
-            {message && <p role="status">{message}</p>}
+            {error && (
+              <p className="error-message">{error}</p>
+            )}
+
+            {message && (
+              <p role="status">{message}</p>
+            )}
 
             <button type="submit" disabled={loading}>
-              {loading ? "جارٍ تسجيل الدخول..." : "تسجيل الدخول"}
+              {loading
+                ? "جارٍ تسجيل الدخول..."
+                : "تسجيل الدخول"}
             </button>
           </form>
 
@@ -478,7 +583,7 @@ async function handleCreateSchool(e) {
   }
 
   // واجهة حساب المدرسة
- if (user.role !== "admin") {
+  if (user.role !== "admin") {
     return (
       <main className="dashboard" dir="rtl">
         <header className="dashboard-header">
@@ -486,7 +591,11 @@ async function handleCreateSchool(e) {
             <h1>نظام درجات التلاميذ</h1>
             <p>حساب المدرسة: {user.username}</p>
           </div>
-          <button className="logout-button" onClick={handleLogout}>
+
+          <button
+            className="logout-button"
+            onClick={handleLogout}
+          >
             تسجيل الخروج
           </button>
         </header>
@@ -506,25 +615,31 @@ async function handleCreateSchool(e) {
               <span>📋</span> نماذج الدرجات
             </div>
 
-            {formsLoading && <p>جارٍ تحميل النماذج...</p>}
+            {formsLoading && (
+              <p>جارٍ تحميل النماذج...</p>
+            )}
 
             {formsError && (
               <p className="error-message">{formsError}</p>
             )}
 
-            {!formsLoading && !formsError && forms.length === 0 && (
-              <p>لا توجد نماذج متاحة.</p>
-            )}
+            {!formsLoading &&
+              !formsError &&
+              forms.length === 0 && (
+                <p>لا توجد نماذج متاحة.</p>
+              )}
 
             {forms.map((form) => (
               <button
                 key={form.id}
-                className={selectedForm?.id === form.id ? "active" : ""}
+                className={
+                  selectedForm?.id === form.id ? "active" : ""
+                }
                 onClick={() => setSelectedForm(form)}
               >
                 <span>📄</span> {form.name}
               </button>
-          ))}
+            ))}
 
             <button
               onClick={handleLogout}
@@ -538,14 +653,14 @@ async function handleCreateSchool(e) {
             {!selectedForm ? (
               <div className="page-heading">
                 <h2>مرحبًا بك في حساب المدرسة</h2>
-                <p>اختر نموذج الدرجات من القائمة لبدء العمل.</p>
+                <p>
+                  اختر نموذج الدرجات من القائمة لبدء العمل.
+                </p>
               </div>
             ) : (
               <div className="page-heading">
                 <h2>{selectedForm.name}</h2>
-                <p>
-                  تم اختيار نموذج الصف بنجاح.
-                </p>
+                <p>تم اختيار نموذج الصف بنجاح.</p>
                 <p className="notice">
                   سنضيف هنا نموذج إدخال بيانات التلاميذ والدرجات.
                 </p>
@@ -572,7 +687,11 @@ async function handleCreateSchool(e) {
 
         <div className="admin-info">
           <span>مدير النظام: {user.username}</span>
-          <button className="logout-button" onClick={handleLogout}>
+
+          <button
+            className="logout-button"
+            onClick={handleLogout}
+          >
             تسجيل الخروج
           </button>
         </div>
@@ -583,35 +702,45 @@ async function handleCreateSchool(e) {
           <h3>القائمة الرئيسية</h3>
 
           <button
-            className={activeSection === "home" ? "active" : ""}
+            className={
+              activeSection === "home" ? "active" : ""
+            }
             onClick={() => setActiveSection("home")}
           >
             <span>🏠</span> الرئيسية
           </button>
 
           <button
-            className={activeSection === "schools" ? "active" : ""}
+            className={
+              activeSection === "schools" ? "active" : ""
+            }
             onClick={() => setActiveSection("schools")}
           >
             <span>🏫</span> إدارة المدارس
           </button>
 
           <button
-            className={activeSection === "forms" ? "active" : ""}
+            className={
+              activeSection === "forms" ? "active" : ""
+            }
             onClick={() => setActiveSection("forms")}
           >
             <span>📋</span> نماذج الدرجات
           </button>
 
           <button
-            className={activeSection === "students" ? "active" : ""}
+            className={
+              activeSection === "students" ? "active" : ""
+            }
             onClick={() => setActiveSection("students")}
           >
             <span>👨‍🎓</span> بيانات التلاميذ
           </button>
 
           <button
-            className={activeSection === "reports" ? "active" : ""}
+            className={
+              activeSection === "reports" ? "active" : ""
+            }
             onClick={() => setActiveSection("reports")}
           >
             <span>📊</span> التقارير
@@ -644,173 +773,3 @@ async function handleCreateSchool(e) {
                   <span className="card-icon">📋</span>
                   <h3>نماذج الدرجات</h3>
                   <p>عرض وإدارة نماذج الصفوف.</p>
-                </button>
-
-                <button
-                  className="dashboard-card orange"
-                  onClick={() => setActiveSection("students")}
-                >
-                  <span className="card-icon">👨‍🎓</span>
-                  <h3>بيانات التلاميذ</h3>
-                  <p>مراجعة سجلات التلاميذ.</p>
-                </button>
-
-                <button
-                  className="dashboard-card purple"
-                  onClick={() => setActiveSection("reports")}
-                >
-                  <span className="card-icon">📊</span>
-                  <h3>التقارير</h3>
-                  <p>عرض ومراجعة تقارير الدرجات.</p>
-                </button>
-              </div>
-            </>
-          )}
-
-          {activeSection === "forms" && (
-            <>
-              <div className="page-heading">
-                <h2>نماذج الدرجات</h2>
-                <p>اختر الصف المطلوب.</p>
-              </div>
-
-              {formsLoading && (
-                <p className="notice">جارٍ تحميل نماذج الدرجات...</p>
-              )}
-
-              {formsError && (
-                <p className="error-message">{formsError}</p>
-              )}
-
-              {!formsLoading && !formsError && forms.length === 0 && (
-                <p className="notice">
-                  لا توجد نماذج درجات نشطة حاليًا.
-                </p>
-              )}
-
-              <div className="dashboard-cards">
-                {forms.map((form) => (
-                  <div className="dashboard-card green" key={form.id}>
-                    <span className="card-icon">📚</span>
-                    <h3>{form.name}</h3>
-                    <p>الصف الدراسي: {form.grade_level}</p>
-                    <p>رمز النموذج: {form.slug}</p>
-                    <span className="form-status">نشط</span>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-
-         {activeSection === "schools" && (
-  <div className="page-heading">
-    <h2>إدارة المدارس</h2>
-    <p>إنشاء حساب جديد لمدرسة.</p>
-
-    <form onSubmit={handleCreateSchool} className="school-form">
-
-      <div className="form-group">
-        <label>اسم المستخدم</label>
-        <input
-          type="text"
-          value={schoolUsername}
-          onChange={(e) => setSchoolUsername(e.target.value)}
-          placeholder="مثال: school001"
-          required
-        />
-      </div>
-
-      <div className="form-group">
-        <label>كلمة المرور</label>
-        <input
-          type="password"
-          value={schoolPassword}
-          onChange={(e) => setSchoolPassword(e.target.value)}
-          placeholder="12 حرفًا على الأقل"
-          required
-        />
-      </div>
-
-      <div className="form-group">
-        <label>اسم المسؤول</label>
-        <input
-          type="text"
-          value={schoolDisplayName}
-          onChange={(e) => setSchoolDisplayName(e.target.value)}
-          required
-        />
-      </div>
-
-      <div className="form-group">
-        <label>اسم المدرسة</label>
-        <input
-          type="text"
-          value={schoolName}
-          onChange={(e) => setSchoolName(e.target.value)}
-          required
-        />
-      </div>
-
-      <div className="form-group">
-        <label>رقم المدرسة (ثلاث خانات)</label>
-        <input
-          type="text"
-          maxLength="3"
-          value={schoolUserNo}
-          onChange={(e) => setSchoolUserNo(e.target.value.replace(/\D/g, ""))}
-          placeholder="مثال: 001"
-          required
-        />
-      </div>
-
-      {schoolError && (
-        <p className="error-message">{schoolError}</p>
-      )}
-
-      {schoolMessage && (
-        <p className="success-message">{schoolMessage}</p>
-      )}
-
-      <button type="submit" disabled={schoolLoading}>
-        {schoolLoading ? "جارٍ إنشاء الحساب..." : "إنشاء حساب المدرسة"}
-      </button>
-
-    </form>
-  </div>
-)}
-
-          {activeSection === "students" && (
-            <div className="page-heading">
-              <h2>بيانات التلاميذ</h2>
-              <p>
-                سيظهر هنا سجل التلاميذ وبياناتهم ودرجاتهم.
-              </p>
-              <p className="notice">
-                هذا القسم قيد التجهيز.
-              </p>
-            </div>
-          )}
-
-          {activeSection === "reports" && (
-            <div className="page-heading">
-              <h2>التقارير</h2>
-              <p>
-                سيظهر هنا عرض تقارير الدرجات ونتائج التلاميذ.
-              </p>
-              <p className="notice">
-                هذا القسم قيد التجهيز.
-              </p>
-            </div>
-          )}
-
-        </section>
-      </div>
-
-      <footer className="dashboard-footer">
-        نظام إلكتروني لإدارة درجات التلاميذ
-      </footer>
-    </main>
-  );
-}
-
-createRoot(document.getElementById("root")).render(<App />);
