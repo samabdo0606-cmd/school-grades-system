@@ -93,7 +93,7 @@ const { data: profile, error: profileError } =
       mounted = false;
       authListener.subscription.unsubscribe();
     };
-  }, [])
+  }, []),
 
   // تحميل نماذج الدرجات من قاعدة البيانات
   useEffect(() => {
