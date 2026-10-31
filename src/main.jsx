@@ -599,177 +599,101 @@ function App() {
             تسجيل الخروج
           </button>
         </header>
+<div className="dashboard-layout">
+  <aside className="sidebar">
+    <h3>القائمة الرئيسية</h3>
 
-        <div className="dashboard-layout">
-          <aside className="sidebar">
-            <h3>القائمة الرئيسية</h3>
+    <button
+      className={activeSection === "home" ? "active" : ""}
+      onClick={() => setActiveSection("home")}
+    >
+      <span>🏠</span> الرئيسية
+    </button>
 
-            <button
-              className={!selectedForm ? "active" : ""}
-              onClick={() => setSelectedForm(null)}
-            >
-              <span>🏠</span> الرئيسية
-            </button>
+    <button
+      className={activeSection === "schools" ? "active" : ""}
+      onClick={() => setActiveSection("schools")}
+    >
+      <span>🏫</span> إدارة المدارس
+    </button>
 
-            <div className="sidebar-section-title">
-              <span>📋</span> نماذج الدرجات
-            </div>
+    <button
+      className={activeSection === "forms" ? "active" : ""}
+      onClick={() => setActiveSection("forms")}
+    >
+      <span>📋</span> نماذج الدرجات
+    </button>
 
-            {formsLoading && (
-              <p>جارٍ تحميل النماذج...</p>
-            )}
+    <button
+      className={activeSection === "students" ? "active" : ""}
+      onClick={() => setActiveSection("students")}
+    >
+      <span>👨‍🎓</span> بيانات التلاميذ
+    </button>
 
-            {formsError && (
-              <p className="error-message">{formsError}</p>
-            )}
+    <button
+      className={activeSection === "reports" ? "active" : ""}
+      onClick={() => setActiveSection("reports")}
+    >
+      <span>📊</span> التقارير
+    </button>
+  </aside>
 
-            {!formsLoading &&
-              !formsError &&
-              forms.length === 0 && (
-                <p>لا توجد نماذج متاحة.</p>
-              )}
-
-            {forms.map((form) => (
-              <button
-                key={form.id}
-                className={
-                  selectedForm?.id === form.id ? "active" : ""
-                }
-                onClick={() => setSelectedForm(form)}
-              >
-                <span>📄</span> {form.name}
-              </button>
-            ))}
-
-            <button
-              onClick={handleLogout}
-              className="logout-button"
-            >
-              <span>🚪</span> تسجيل الخروج
-            </button>
-          </aside>
-
-          <section className="main-content">
-            {!selectedForm ? (
-              <div className="page-heading">
-                <h2>مرحبًا بك في حساب المدرسة</h2>
-                <p>
-                  اختر نموذج الدرجات من القائمة لبدء العمل.
-                </p>
-              </div>
-            ) : (
-              <div className="page-heading">
-                <h2>{selectedForm.name}</h2>
-                <p>تم اختيار نموذج الصف بنجاح.</p>
-                <p className="notice">
-                  سنضيف هنا نموذج إدخال بيانات التلاميذ والدرجات.
-                </p>
-              </div>
-            )}
-          </section>
+  <section className="main-content">
+    {activeSection === "home" && (
+      <>
+        <div className="page-heading">
+          <h2>مرحبًا بك، مدير النظام</h2>
+          <p>اختر القسم الذي تريد العمل عليه.</p>
         </div>
 
-        <footer className="dashboard-footer">
-          نظام إلكتروني لإدارة درجات التلاميذ
-        </footer>
-      </main>
-    );
-  }
-
-  // لوحة تحكم مدير النظام
-  return (
-    <main className="dashboard" dir="rtl">
-      <header className="dashboard-header">
-        <div>
-          <h1>نظام درجات التلاميذ</h1>
-          <p>لوحة تحكم مدير النظام</p>
-        </div>
-
-        <div className="admin-info">
-          <span>مدير النظام: {user.username}</span>
-
+        <div className="dashboard-cards">
           <button
-            className="logout-button"
-            onClick={handleLogout}
-          >
-            تسجيل الخروج
-          </button>
-        </div>
-      </header>
-
-      <div className="dashboard-layout">
-        <aside className="sidebar">
-          <h3>القائمة الرئيسية</h3>
-
-          <button
-            className={
-              activeSection === "home" ? "active" : ""
-            }
-            onClick={() => setActiveSection("home")}
-          >
-            <span>🏠</span> الرئيسية
-          </button>
-
-          <button
-            className={
-              activeSection === "schools" ? "active" : ""
-            }
+            className="dashboard-card blue"
             onClick={() => setActiveSection("schools")}
           >
-            <span>🏫</span> إدارة المدارس
+            <span className="card-icon">🏫</span>
+            <h3>إدارة المدارس</h3>
+            <p>إضافة المدارس وإدارة حساباتها.</p>
           </button>
 
           <button
-            className={
-              activeSection === "forms" ? "active" : ""
-            }
+            className="dashboard-card green"
             onClick={() => setActiveSection("forms")}
           >
-            <span>📋</span> نماذج الدرجات
+            <span className="card-icon">📋</span>
+            <h3>نماذج الدرجات</h3>
+            <p>عرض وإدارة نماذج الصفوف.</p>
           </button>
+        </div>
+      </>
+    )}
 
-          <button
-            className={
-              activeSection === "students" ? "active" : ""
-            }
-            onClick={() => setActiveSection("students")}
-          >
-            <span>👨‍🎓</span> بيانات التلاميذ
-          </button>
+    {activeSection === "schools" && (
+      <div className="page-heading">
+        <h2>إدارة المدارس</h2>
+        <p>إضافة المدارس وإدارة حساباتها.</p>
+      </div>
+    )}
 
-          <button
-            className={
-              activeSection === "reports" ? "active" : ""
-            }
-            onClick={() => setActiveSection("reports")}
-          >
-            <span>📊</span> التقارير
-          </button>
-        </aside>
+    {activeSection === "forms" && (
+      <div className="page-heading">
+        <h2>نماذج الدرجات</h2>
+        <p>عرض وإدارة نماذج الصفوف.</p>
+      </div>
+    )}
 
-        <section className="main-content">
+    {activeSection === "students" && (
+      <div className="page-heading">
+        <h2>بيانات التلاميذ</h2>
+      </div>
+    )}
 
-          {activeSection === "home" && (
-            <>
-              <div className="page-heading">
-                <h2>مرحبًا بك، مدير النظام</h2>
-                <p>اختر القسم الذي تريد العمل عليه.</p>
-              </div>
-
-              <div className="dashboard-cards">
-                <button
-                  className="dashboard-card blue"
-                  onClick={() => setActiveSection("schools")}
-                >
-                  <span className="card-icon">🏫</span>
-                  <h3>إدارة المدارس</h3>
-                  <p>إضافة المدارس وإدارة حساباتها.</p>
-                </button>
-
-                <button
-                  className="dashboard-card green"
-                  onClick={() => setActiveSection("forms")}
-                >
-                  <span className="card-icon">📋</span>
-                  <h3>نماذج الدرجات</h3>
-                  <p>عرض وإدارة نماذج الصفوف.</p>
+    {activeSection === "reports" && (
+      <div className="page-heading">
+        <h2>التقارير</h2>
+      </div>
+    )}
+  </section>
+</div>
+     
