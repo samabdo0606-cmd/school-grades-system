@@ -65,6 +65,26 @@ function makeFieldLabels(form, pageIndex, count) {
   return Array.from({ length: count }, (_, i) => `الدرجة ${i + 1}`);
 }
 
+function escapeExcel(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function safeFileName(value) {
+  return String(value || "بيانات-الدرجات").replace(/[\\/:*?"<>|]+/g, "-").trim();
+}
+
+function escapeXml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
 function App() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -105,6 +125,17 @@ function App() {
   const [schools, setSchools] = useState([]);
   const [schoolsLoading, setSchoolsLoading] = useState(false);
   const [schoolsError, setSchoolsError] = useState("");
+  const [exportSchoolIds, setExportSchoolIds] = useState([]);
+  const [exportFormIds, setExportFormIds] = useState([]);
+  const [entrySchoolId, setEntrySchoolId] = useState("");
+  const [editingSchool, setEditingSchool] = useState(null);
+  const [schoolEditDisplayName, setSchoolEditDisplayName] = useState("");
+  const [schoolEditName, setSchoolEditName] = useState("");
+  const [schoolEditNo, setSchoolEditNo] = useState("");
+  const [schoolEditLoading, setSchoolEditLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportError, setExportError] = useState("");
+  const [exportMessage, setExportMessage] = useState("");
 
   const pages = useMemo(
     () => (selectedForm ? getPages(selectedForm) : null),
@@ -129,10 +160,18 @@ function App() {
         return;
       }
 
+      const tabSessionKey = "school-grades-tab-authenticated";
+      if (sessionStorage.getItem(tabSessionKey) !== "1") {
+        // Do not restore a previous browser/tab session; leave the login screen visible.
+        return;
+      }
       const { data, error: sessionError } = await supabase.auth.getSession();
       if (!mounted) return;
       if (sessionError) throw sessionError;
-      if (!data.session) return;
+      if (!data.session) {
+        sessionStorage.removeItem(tabSessionKey);
+        return;
+      }
 
       const { data: authData, error: authError } = await supabase.auth.getUser();
       if (!mounted) return;
@@ -209,18 +248,20 @@ function App() {
   }
 
   useEffect(() => {
-    if (user?.role === "admin" && activeSection === "schools") loadSchools();
+    if (user?.role === "admin" && ["schools", "export", "forms", "students"].includes(activeSection)) loadSchools();
   }, [user, activeSection]);
 
   async function loadStudents(form = selectedForm) {
     if (!form || !user) return;
+    const targetUserId = user.role === "admin" ? entrySchoolId : user.id;
+    if (!targetUserId) { setStudents([]); return; }
     setStudentLoading(true);
     setStudentError("");
     const { data, error: queryError } = await supabase
       .from("submissions")
       .select("id, form_id, user_id, user_no, student_number, student_code, student_name, answers, created_at, updated_at")
       .eq("form_id", form.id)
-      .eq("user_id", user.id)
+      .eq("user_id", targetUserId)
       .order("student_number", { ascending: true });
 
     if (queryError) {
@@ -231,6 +272,18 @@ function App() {
     }
     setStudentLoading(false);
   }
+
+  useEffect(() => {
+    if (user && selectedForm && (user.role !== "admin" || entrySchoolId)) loadStudents(selectedForm);
+    else setStudents([]);
+  }, [user, selectedForm, entrySchoolId]);
+
+  useEffect(() => {
+    if (currentPage > 0) {
+      const timer = setTimeout(() => document.querySelector("[data-grade-field]")?.focus(), 30);
+      return () => clearTimeout(timer);
+    }
+  }, [currentPage]);
 
   function resetStudent() {
     setStudentNumber("");
@@ -248,7 +301,6 @@ function App() {
     setCurrentPage(0);
     resetStudent();
     setStudents([]);
-    setTimeout(() => loadStudents(form), 0);
   }
 
   function loadStudentRecord(record, index = -1) {
@@ -308,11 +360,17 @@ function App() {
       return;
     }
 
+    const targetSchool = user.role === "admin" ? schools.find((school) => String(school.id) === String(entrySchoolId)) : null;
+    if (user.role === "admin" && !targetSchool) {
+      setStudentError("اختر المدرسة أولاً قبل إدخال الدرجات.");
+      return;
+    }
     setStudentLoading(true);
+    const targetUserId = targetSchool?.id || user.id;
     const payload = {
       form_id: selectedForm.id,
-      user_id: user.id,
-      user_no: user.user_no,
+      user_id: targetUserId,
+      user_no: targetSchool?.user_no || user.user_no,
       student_number: number,
       student_name: name,
       answers,
@@ -325,7 +383,7 @@ function App() {
         .from("submissions")
         .update(payload)
         .eq("id", editingId)
-        .eq("user_id", user.id)
+        .eq("user_id", targetUserId)
         .select()
         .single();
     } else {
@@ -352,7 +410,7 @@ function App() {
       .from("submissions")
       .select("id, form_id, user_id, user_no, student_number, student_code, student_name, answers, created_at, updated_at")
       .eq("form_id", selectedForm.id)
-      .eq("user_id", user.id)
+      .eq("user_id", targetUserId)
       .order("student_number", { ascending: true });
     if (!refreshError) {
       const list = refreshed || [];
@@ -361,6 +419,74 @@ function App() {
       setEditingId(result.data.id);
       setCurrentStudentIndex(idx);
     }
+  }
+
+  async function downloadExcel() {
+    setExportError("");
+    setExportMessage("");
+    const chosenForms = forms.filter((form) => exportFormIds.includes(String(form.id)));
+    if (!chosenForms.length) { setExportError("اختر صفًا دراسيًا واحدًا على الأقل."); return; }
+
+    let targetSchools;
+    if (isAdmin) {
+      targetSchools = schools.filter((school) => exportSchoolIds.includes(String(school.id)));
+      if (!targetSchools.length) { setExportError("اختر مدرسة واحدة على الأقل."); return; }
+    } else {
+      targetSchools = [{ id: user.id, school_name: user.school_name || user.username, user_no: user.user_no }];
+    }
+
+    setExportLoading(true);
+    try {
+      const worksheets = [];
+      let totalStudents = 0;
+      for (const school of targetSchools) {
+        for (const form of chosenForms) {
+          const { data, error: queryError } = await supabase
+            .from("submissions")
+            .select("student_number, student_code, student_name, answers")
+            .eq("form_id", form.id)
+            .eq("user_id", school.id)
+            .order("student_number", { ascending: true });
+          if (queryError) throw queryError;
+          totalStudents += (data || []).length;
+          const layout = getPages(form) || [];
+          const columns = [
+            { title: "رقم التلميذ", key: "student_number" },
+            { title: "كود التلميذ", key: "student_code" },
+            { title: "اسم التلميذ", key: "student_name" },
+          ];
+          layout.forEach((page, pageIndex) => {
+            if (pageIndex === 0) return;
+            makeFieldLabels(form, pageIndex, page.count).forEach((label, fieldIndex) => {
+              columns.push({ title: `${page.title} - ${label}`, key: `p${pageIndex}_f${fieldIndex + 1}` });
+            });
+          });
+          const cell = (value, style = 4) => `<Cell ss:StyleID="s${style}"><Data ss:Type="String">${escapeXml(value)}</Data></Cell>`;
+          let rows = `<Row>${cell(`بيانات ${form.name} - ${school.school_name || school.username}`, 1)}</Row>`;
+          rows += `<Row>${cell(`عدد التلاميذ: ${(data || []).length} | تاريخ التصدير: ${new Date().toLocaleDateString("ar-EG")}`, 3)}</Row>`;
+          rows += `<Row>${columns.map((column) => cell(column.title, 2)).join("")}</Row>`;
+          (data || []).forEach((record, index) => {
+            const answerValues = record.answers && typeof record.answers === "object" ? record.answers : {};
+            rows += `<Row>${columns.map((column) => cell(column.key.startsWith("p") ? answerValues[column.key] : record[column.key], index % 2 ? 3 : 4)).join("")}</Row>`;
+          });
+          if (!(data || []).length) rows += `<Row>${cell("لا توجد بيانات مسجلة لهذا الصف.", 3)}</Row>`;
+          const sheetName = safeFileName(`${school.user_no || ""}-${form.name}`).slice(0, 31) || "الدرجات";
+          worksheets.push(`<Worksheet ss:Name="${escapeXml(sheetName)}"><Table>${rows}</Table><WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel"><DisplayRightToLeft/><PageSetup><Layout x:Orientation="Landscape"/></PageSetup></WorksheetOptions></Worksheet>`);
+        }
+      }
+      const workbook = `<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Styles><Style ss:ID="Default" ss:Name="Normal"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Arial" ss:Size="10"/><Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/></Style><Style ss:ID="s1"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Arial" ss:Size="16" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#526D82" ss:Pattern="Solid"/></Style><Style ss:ID="s2"><Alignment ss:Horizontal="Center"/><Font ss:FontName="Arial" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#8AA6A3" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#607D8B"/></Borders></Style><Style ss:ID="s3"><Alignment ss:Horizontal="Center"/><Font ss:FontName="Arial" ss:Color="#263746"/><Interior ss:Color="#EAF0EF" ss:Pattern="Solid"/></Style><Style ss:ID="s4"><Alignment ss:Horizontal="Center"/><Font ss:FontName="Arial" ss:Color="#263746"/><Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/></Style></Styles>${worksheets.join("")}</Workbook>`;
+      const blob = new Blob(["\ufeff", workbook], { type: "application/vnd.ms-excel;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${safeFileName(isAdmin ? "بيانات-المدارس" : (user.school_name || user.username))}-الصفوف-المختارة.xls`;
+      document.body.appendChild(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+      setExportMessage(`تم تجهيز ملف Excel بعدد ${worksheets.length} ورقة، ويحتوي على ${totalStudents} سجلًا.`);
+    } catch (err) {
+      console.error("Excel export error:", err);
+      setExportError(`تعذر تنزيل البيانات: ${err.message || "حدث خطأ غير معروف."}`);
+    } finally { setExportLoading(false); }
   }
 
   async function handleCreateSchool(e) {
@@ -441,6 +567,47 @@ function App() {
     await loadSchools();
   }
 
+  function startEditSchool(school) {
+    setEditingSchool(school);
+    setSchoolEditDisplayName(school.display_name || "");
+    setSchoolEditName(school.school_name || "");
+    setSchoolEditNo(String(school.user_no || ""));
+    setSchoolsError("");
+    setSchoolMessage("");
+  }
+
+  async function saveSchoolEdit(e) {
+    e.preventDefault();
+    if (!editingSchool) return;
+    const cleanNo = schoolEditNo.trim();
+    if (!/^0(0[1-9]|[1-2][0-9]|3[0-5])$/.test(cleanNo)) {
+      setSchoolsError("رقم المدرسة يجب أن يكون من 001 إلى 035."); return;
+    }
+    setSchoolEditLoading(true);
+    const { error: updateError } = await supabase.from("profiles").update({
+      display_name: schoolEditDisplayName.trim(),
+      school_name: schoolEditName.trim(),
+      user_no: cleanNo,
+    }).eq("id", editingSchool.id);
+    setSchoolEditLoading(false);
+    if (updateError) { setSchoolsError(`تعذر تعديل بيانات المدرسة: ${updateError.message}`); return; }
+    // Keep the stored school number on its existing submissions in sync;
+    // the generated student_code column is recalculated by PostgreSQL.
+    const { error: submissionsError } = await supabase
+      .from("submissions")
+      .update({ user_no: cleanNo })
+      .eq("user_id", editingSchool.id);
+    if (submissionsError) {
+      setSchoolsError(`تم تحديث بيانات المدرسة، لكن تعذر تحديث أرقامها في سجلات التلاميذ: ${submissionsError.message}`);
+      await loadSchools();
+      setSchoolEditLoading(false);
+      return;
+    }
+    setEditingSchool(null);
+    setSchoolMessage("تم تحديث بيانات المدرسة وسجلات تلاميذها.");
+    await loadSchools();
+  }
+
   async function handleLogin(e) {
     e.preventDefault();
     setError("");
@@ -494,6 +661,7 @@ function App() {
         throw new Error("نوع الحساب غير معروف. يرجى مراجعة مدير النظام.");
       }
 
+      sessionStorage.setItem("school-grades-tab-authenticated", "1");
       setUser({
         id: authData.user.id,
         username: profile.username || data.user?.username || cleanUsername,
@@ -546,6 +714,7 @@ function App() {
   }
 
   async function handleLogout() {
+    sessionStorage.removeItem("school-grades-tab-authenticated");
     const { error: logoutError } = await supabase.auth.signOut();
     if (logoutError) {
       setError("تعذر تسجيل الخروج. حاول مرة أخرى.");
@@ -631,6 +800,7 @@ function App() {
             <>
               <button className={activeSection === "schools" ? "active" : ""} onClick={() => setActiveSection("schools")}><span>🏫</span> إدارة المدارس</button>
               <button className={activeSection === "forms" ? "active" : ""} onClick={() => setActiveSection("forms")}><span>📋</span> نماذج الدرجات</button>
+              <button className={activeSection === "students" ? "active" : ""} onClick={() => setActiveSection("students")}><span>👨‍🎓</span> ملفات إدخال الدرجات</button>
             </>
           ) : (
             <>
@@ -638,6 +808,7 @@ function App() {
               <button className={activeSection === "students" ? "active" : ""} onClick={() => setActiveSection("students")}><span>👨‍🎓</span> بيانات التلاميذ</button>
             </>
           )}
+          <button className={activeSection === "export" ? "active" : ""} onClick={() => { setExportError(""); setExportMessage(""); setActiveSection("export"); }}><span>📥</span> تنزيل بيانات Excel</button>
         </aside>
 
         <section className="main-content">
@@ -651,11 +822,40 @@ function App() {
                 {isAdmin ? (
                   <>
                     <button className="dashboard-card blue" onClick={() => setActiveSection("schools")}><span className="card-icon">🏫</span><h3>إدارة المدارس</h3><p>إنشاء حسابات المدارس وتفعيلها أو إيقافها.</p></button>
-                    <button className="dashboard-card green" onClick={() => setActiveSection("forms")}><span className="card-icon">📋</span><h3>نماذج الدرجات</h3><p>عرض نماذج الصفوف المتاحة.</p></button>
+                    <button className="dashboard-card green" onClick={() => setActiveSection("forms")}><span className="card-icon">📋</span><h3>نماذج الدرجات</h3><p>فتح ملفات إدخال الدرجات ومراجعتها للمدارس.</p></button>
                   </>
                 ) : (
                   <button className="dashboard-card blue" onClick={() => setActiveSection("forms")}><span className="card-icon">📋</span><h3>نماذج الدرجات</h3><p>اختر الصف المطلوب لإدخال الدرجات.</p></button>
                 )}
+              </div>
+            </>
+          )}
+
+          {activeSection === "export" && (
+            <>
+              <div className="page-heading">
+                <h2>تنزيل بيانات Excel</h2>
+                <p>{isAdmin ? "اختر المدرسة والصف لتنزيل ملف مستقل ببيانات الفصل." : "اختر الصف لتنزيل بيانات تلاميذ مدرستك فقط."}</p>
+              </div>
+              <div className="dashboard-card" style={{ maxWidth: 720 }}>
+                {isAdmin && (
+                  <div className="choice-group">
+                    <label>المدارس (يمكن اختيار أكثر من مدرسة)</label>
+                    {schools.map((school) => <label className="choice-item" key={school.id}><input type="checkbox" checked={exportSchoolIds.includes(String(school.id))} onChange={(e) => setExportSchoolIds((old) => e.target.checked ? [...old, String(school.id)] : old.filter((id) => id !== String(school.id)))} />{school.school_name || school.display_name || school.username} - {String(school.user_no || "").padStart(3, "0")}</label>)}
+                    {schoolsLoading && <p>جارٍ تحميل قائمة المدارس...</p>}
+                    {schoolsError && <p className="error-message">{schoolsError}</p>}
+                  </div>
+                )}
+                <div className="choice-group">
+                  <label>الفصول الدراسية (يمكن اختيار أكثر من فصل)</label>
+                  {forms.map((form) => <label className="choice-item" key={form.id}><input type="checkbox" checked={exportFormIds.includes(String(form.id))} onChange={(e) => setExportFormIds((old) => e.target.checked ? [...old, String(form.id)] : old.filter((id) => id !== String(form.id)))} />{form.name}</label>)}
+                </div>
+                {exportError && <p className="error-message">{exportError}</p>}
+                {exportMessage && <p className="notice">{exportMessage}</p>}
+                <button type="button" onClick={downloadExcel} disabled={exportLoading || formsLoading || (isAdmin && schoolsLoading)} style={{ marginTop: 18 }}>
+                  {exportLoading ? "جارٍ تجهيز ملف Excel..." : "تنزيل ملف Excel"}
+                </button>
+                <p className="subtitle" style={{ marginTop: 14 }}>يتضمن الملف أرقام التلاميذ وأكوادهم وأسماءهم وجميع درجات الأسئلة، مع تنسيق عربي وألوان وخطوط وحدود للجدول.</p>
               </div>
             </>
           )}
@@ -691,7 +891,22 @@ function App() {
                   <h3>{school.school_name || school.display_name || school.username}</h3>
                   <p>اسم المستخدم: {school.username} — رقم المدرسة: {school.user_no}</p>
                   <p>الحالة: {school.is_active ? "نشط" : "موقوف"}</p>
-                  <button type="button" onClick={() => toggleSchoolActive(school)}>{school.is_active ? "إيقاف الحساب" : "تفعيل الحساب"}</button>
+                  <div className="button-row">
+                    <button type="button" onClick={() => startEditSchool(school)}>تعديل بيانات المدرسة</button>
+                    <button type="button" className="secondary-button" onClick={() => toggleSchoolActive(school)}>{school.is_active ? "إيقاف الحساب" : "تفعيل الحساب"}</button>
+                  </div>
+                  {editingSchool?.id === school.id && (
+                    <form className="school-edit-form" onSubmit={saveSchoolEdit}>
+                      <label>اسم مسؤول المدرسة</label>
+                      <input value={schoolEditDisplayName} onChange={(e) => setSchoolEditDisplayName(e.target.value)} required />
+                      <label>اسم المدرسة</label>
+                      <input value={schoolEditName} onChange={(e) => setSchoolEditName(e.target.value)} required />
+                      <label>رقم المدرسة (001 إلى 035)</label>
+                      <input value={schoolEditNo} onChange={(e) => setSchoolEditNo(e.target.value)} maxLength={3} inputMode="numeric" required />
+                      <p className="subtitle">اسم المستخدم وكلمة المرور لا يتغيران من هذه الشاشة.</p>
+                      <div className="button-row"><button type="submit" disabled={schoolEditLoading}>{schoolEditLoading ? "جارٍ الحفظ..." : "حفظ التعديلات"}</button><button type="button" className="secondary-button" onClick={() => setEditingSchool(null)}>إلغاء</button></div>
+                    </form>
+                  )}
                 </div>
               ))}
             </>
@@ -699,13 +914,13 @@ function App() {
 
           {activeSection === "forms" && (
             <>
-              <div className="page-heading"><h2>نماذج الدرجات</h2><p>{isAdmin ? "النماذج المعرفة في قاعدة البيانات." : "اختر نموذج الصف الذي تريد تسجيل درجاته."}</p></div>
+              <div className="page-heading"><h2>نماذج الدرجات</h2><p>{isAdmin ? "اختر نموذج الصف ثم المدرسة لعرض ملف إدخال الدرجات." : "اختر نموذج الصف الذي تريد تسجيل درجاته."}</p></div>
               {formsLoading && <p>جارٍ تحميل النماذج...</p>}
               {formsError && <p className="error-message">{formsError}</p>}
               {!formsLoading && !formsError && forms.length === 0 && <p>لا توجد نماذج نشطة في قاعدة البيانات.</p>}
               <div className="dashboard-cards">
                 {forms.map((form) => (
-                  <button className="dashboard-card green" key={form.id} onClick={() => !isAdmin && chooseForm(form)}>
+                  <button className="dashboard-card green" key={form.id} onClick={() => chooseForm(form)}>
                     <span className="card-icon">📋</span>
                     <h3>{form.name}</h3>
                     <p>الصف الدراسي: {form.grade_level || "غير محدد"}</p>
@@ -716,14 +931,25 @@ function App() {
             </>
           )}
 
-          {activeSection === "students" && !isAdmin && (
+          {activeSection === "students" && (
             <>
               <div className="page-heading">
                 <h2>بيانات التلاميذ</h2>
                 {selectedForm ? <p>النموذج الحالي: {selectedForm.name}</p> : <p>اختر نموذجاً من قسم نماذج الدرجات أولاً.</p>}
               </div>
 
-              {selectedForm && (
+              {isAdmin && (
+                <div className="dashboard-card school-entry-picker">
+                  <label htmlFor="entry-school">المدرسة المطلوب إدخال أو مراجعة درجاتها</label>
+                  <select id="entry-school" value={entrySchoolId} onChange={(e) => { setEntrySchoolId(e.target.value); resetStudent(); }}>
+                    <option value="">اختر المدرسة</option>
+                    {schools.map((school) => <option key={school.id} value={school.id}>{school.school_name || school.display_name || school.username} - {String(school.user_no || "").padStart(3, "0")}</option>)}
+                  </select>
+                  {schoolsLoading && <p>جارٍ تحميل المدارس...</p>}
+                  {schoolsError && <p className="error-message">{schoolsError}</p>}
+                </div>
+              )}
+              {selectedForm && (!isAdmin || entrySchoolId) && (
                 <>
                   <div className="dashboard-card" style={{ marginBottom: 18 }}>
                     <label>النموذج المحدد</label>
@@ -755,7 +981,7 @@ function App() {
                         <label htmlFor="student-number">رقم التلميذ</label>
                         <input id="student-number" value={studentNumber} onChange={(e) => setStudentNumber(e.target.value)} inputMode="numeric" placeholder={`يبدأ من ${selectedForm.starting_student_number || ""}`} />
                         <label htmlFor="student-name">اسم التلميذ</label>
-                        <input id="student-name" value={studentName} onChange={(e) => setStudentName(e.target.value)} placeholder="اكتب اسم التلميذ" />
+                        <input id="student-name" value={studentName} onChange={(e) => setStudentName(e.target.value)} onKeyDown={(e) => { if (e.key === "Tab" && !e.shiftKey && pages?.length > 1) { e.preventDefault(); setCurrentPage(1); setTimeout(() => document.querySelector("[data-grade-field]")?.focus(), 0); } }} placeholder="اكتب اسم التلميذ" />
                       </>
                     ) : (
                       <div style={{ display: "grid", gridTemplateColumns: `repeat(${pages?.[currentPage]?.columns || 3}, minmax(0, 1fr))`, gap: 12 }}>
@@ -764,7 +990,7 @@ function App() {
                           return (
                             <div key={key}>
                               <label htmlFor={key}>{label}</label>
-                              <input id={key} value={answers[key] ?? ""} onChange={(e) => setAnswers((prev) => ({ ...prev, [key]: e.target.value }))} inputMode="decimal" />
+                              <input id={key} data-grade-field value={answers[key] ?? ""} onChange={(e) => setAnswers((prev) => ({ ...prev, [key]: e.target.value }))} onKeyDown={(e) => { const last = index === (pages?.[currentPage]?.count || 0) - 1; if (e.key === "Tab" && !e.shiftKey && last) { if (currentPage < (pages?.length || 1) - 1) { e.preventDefault(); setCurrentPage((p) => p + 1); setTimeout(() => document.querySelector("[data-grade-field]")?.focus(), 0); } else { e.preventDefault(); document.getElementById("save-student-button")?.focus(); } } }} inputMode="decimal" />
                             </div>
                           );
                         })}
@@ -774,7 +1000,7 @@ function App() {
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 22 }}>
                       <button type="button" disabled={currentPage === 0} onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}>السابق</button>
                       {currentPage < (pages?.length || 1) - 1 && <button type="button" onClick={() => setCurrentPage((p) => Math.min((pages?.length || 1) - 1, p + 1))}>التالي</button>}
-                      {currentPage === (pages?.length || 1) - 1 && <button type="button" onClick={saveStudent} disabled={studentLoading}>{studentLoading ? "جارٍ الحفظ..." : editingId ? "تحديث بيانات التلميذ" : "حفظ بيانات التلميذ"}</button>}
+                      {currentPage === (pages?.length || 1) - 1 && <button id="save-student-button" type="button" onClick={saveStudent} disabled={studentLoading}>{studentLoading ? "جارٍ الحفظ..." : editingId ? "تحديث بيانات التلميذ" : "حفظ بيانات التلميذ"}</button>}
                       <button type="button" onClick={() => moveStudent(-1)} disabled={!students.length}>التلميذ السابق</button>
                       <button type="button" onClick={() => moveStudent(1)} disabled={!students.length}>التلميذ التالي</button>
                     </div>
