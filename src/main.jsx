@@ -489,10 +489,14 @@ function App() {
         await supabase.auth.signOut();
         throw new Error("هذا الحساب غير نشط. يرجى مراجعة مدير النظام.");
       }
-      if (!["admin", "school"].includes(profile.role)) {
-        await supabase.auth.signOut();
-        throw new Error("نوع الحساب غير معروف. يرجى مراجعة مدير النظام.");
-      }
+    if (!["admin", "school", "user"].includes(profile.role)) {
+  await supabase.auth.signOut();
+  throw new Error("نوع الحساب غير معروف. يرجى مراجعة مدير النظام.");
+}
+
+if (profile.role === "user") {
+  profile.role = "school";
+}
 
       setUser({
         id: authData.user.id,
