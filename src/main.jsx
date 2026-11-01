@@ -150,10 +150,11 @@ function App() {
         await supabase.auth.signOut();
         throw new Error("هذا الحساب غير نشط. يرجى مراجعة مدير النظام.");
       }
+      const normalizedRole = profile.role === "user" ? "school" : profile.role;
       setUser({
         id: authData.user.id,
         username: profile.username || profile.display_name || authData.user.email,
-        role: profile.role,
+        role: normalizedRole,
         user_no: profile.user_no,
         school_name: profile.school_name,
       });
@@ -199,7 +200,7 @@ function App() {
     const { data, error: queryError } = await supabase
       .from("profiles")
       .select("id, username, display_name, school_name, user_no, role, is_active, created_at")
-      .eq("role", "school")
+      .eq("role", "user")
       .order("user_no", { ascending: true });
 
     if (queryError) setSchoolsError(`تعذر تحميل المدارس: ${queryError.message}`);
@@ -308,15 +309,15 @@ function App() {
     }
 
     setStudentLoading(true);
-  const payload = {
-  form_id: selectedForm.id,
-  user_id: user.id,
-  user_no: user.user_no,
-  student_number: number,
-  student_name: name,
-  answers: answers,
-  updated_at: new Date().toISOString(),
-};
+    const payload = {
+      form_id: selectedForm.id,
+      user_id: user.id,
+      user_no: user.user_no,
+      student_number: number,
+      student_name: name,
+      answers,
+      updated_at: new Date().toISOString(),
+    };
 
     let result;
     if (editingId) {
@@ -488,19 +489,15 @@ function App() {
         await supabase.auth.signOut();
         throw new Error("هذا الحساب غير نشط. يرجى مراجعة مدير النظام.");
       }
-    if (!["admin", "school", "user"].includes(profile.role)) {
-  await supabase.auth.signOut();
-  throw new Error("نوع الحساب غير معروف. يرجى مراجعة مدير النظام.");
-}
-
-if (profile.role === "user") {
-  profile.role = "school";
-}
+      if (!["admin", "school", "user"].includes(profile.role)) {
+        await supabase.auth.signOut();
+        throw new Error("نوع الحساب غير معروف. يرجى مراجعة مدير النظام.");
+      }
 
       setUser({
         id: authData.user.id,
         username: profile.username || data.user?.username || cleanUsername,
-        role: profile.role,
+        role: profile.role === "user" ? "school" : profile.role,
         user_no: profile.user_no,
         school_name: profile.school_name,
       });
