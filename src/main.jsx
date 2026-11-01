@@ -308,14 +308,15 @@ function App() {
     }
 
     setStudentLoading(true);
-    const payload = {
-      form_id: selectedForm.id,
-      user_id: user.id,
-      user_no: user.user_no,
-      student_number: number,
-    
-      updated_at: new Date().toISOString(),
-    };
+  const payload = {
+  form_id: selectedForm.id,
+  user_id: user.id,
+  user_no: user.user_no,
+  student_number: number,
+  student_name: name,
+  answers: answers,
+  updated_at: new Date().toISOString(),
+};
 
     let result;
     if (editingId) {
