@@ -313,9 +313,7 @@ function App() {
       user_id: user.id,
       user_no: user.user_no,
       student_number: number,
-      student_code: `${String(user.user_no || "").padStart(3, "0")}${number}`,
-      student_name: name,
-      answers,
+    
       updated_at: new Date().toISOString(),
     };
 
